@@ -1,0 +1,15 @@
+[project]
+name = "comfyui-clipslider"
+description = "A node to replicate https://huggingface.co/spaces/latentexplorers/latentnavigation-flux"
+version = "1.0.0"
+license = {file = "LICENSE"}
+dependencies = ["diffusers"]
+
+[project.urls]
+Repository = "https://github.com/RhizoNymph/ComfyUI-CLIPSlider"
+#  Used by Comfy Registry https://comfyregistry.org
+
+[tool.comfy]
+PublisherId = "rhizonymph"
+DisplayName = "ComfyUI-CLIPSlider"
+Icon = ""
