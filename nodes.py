@@ -33,7 +33,7 @@ class CLIPSliderNode:
                 "clip": ("CLIP",),
                 "target_word": ("STRING", {"default": "happy"}),
                 "opposite": ("STRING", {"default": "sad"}),
-                "scales": ("STRING", {"default": "1.0"}),
+                "scale": ("FLOAT", {"default": 1.0, "min": -10.0, "max": 10.0, "step": 0.1}),
                 "prompt": ("STRING", {"default": "a photo of a person"}),
                 "iterations": ("INT", {"default": 300, "min": 1, "max": 0xffffffffffffffff}),
                 "seed": ("INT", {"default": 0, "min": 0, "max": 0xffffffffffffffff}),
@@ -41,7 +41,7 @@ class CLIPSliderNode:
             "optional": {
                 "target_word_2nd": ("STRING", {"default": ""}),
                 "opposite_2nd": ("STRING", {"default": ""}),
-                "scales_2nd": ("STRING", {"default": "0.0"}),
+                "scale_2nd": ("FLOAT", {"default": 0.0, "min": -10.0, "max": 10.0, "step": 0.1}),
             }
         }
 
@@ -75,8 +75,8 @@ class CLIPSliderNode:
         avg_diff = diffs.mean(0, keepdim=True)
         return avg_diff
 
-    def apply_clip_slider(self, model, clip, target_word, opposite, scales, prompt, iterations, seed,
-                          target_word_2nd="", opposite_2nd="", scales_2nd="0.0"):
+    def apply_clip_slider(self, model, clip, target_word, opposite, scale, prompt, iterations, seed,
+                          target_word_2nd="", opposite_2nd="", scale_2nd=0.0):
         torch.manual_seed(seed)
 
         avg_diff = self.find_latent_direction(clip, target_word, opposite, iterations)
@@ -84,34 +84,23 @@ class CLIPSliderNode:
         if target_word_2nd and opposite_2nd:
             avg_diff_2nd = self.find_latent_direction(clip, target_word_2nd, opposite_2nd, iterations)
 
-        # Convert scales from string to list of floats
-        scales = [float(s.strip()) for s in scales.split(',')]
-        scales_2nd = [float(s.strip()) for s in scales_2nd.split(',')]
-
-        # Ensure scales_2nd has the same length as scales
-        scales_2nd = scales_2nd + [0.0] * (len(scales) - len(scales_2nd))
-
         tokens = clip.tokenize(prompt)
         cond, pooled = clip.encode_from_tokens(tokens, return_pooled=True)
 
-        positive_conditionings = []
-        negative_conditionings = []
+        # Apply the CLIP slider effect for positive conditioning
+        positive_cond = cond + avg_diff * scale
+        if avg_diff_2nd is not None:
+            positive_cond = positive_cond + avg_diff_2nd * scale_2nd
 
-        for scale, scale_2nd in zip(scales, scales_2nd):
-            # Apply the CLIP slider effect for positive conditioning
-            positive_cond = cond + avg_diff * scale
-            if avg_diff_2nd is not None:
-                positive_cond = positive_cond + avg_diff_2nd * scale_2nd
+        # Apply the inverse CLIP slider effect for negative conditioning
+        negative_cond = cond - avg_diff * scale
+        if avg_diff_2nd is not None:
+            negative_cond = negative_cond - avg_diff_2nd * scale_2nd
 
-            # Apply the inverse CLIP slider effect for negative conditioning
-            negative_cond = cond - avg_diff * scale
-            if avg_diff_2nd is not None:
-                negative_cond = negative_cond - avg_diff_2nd * scale_2nd
+        positive_conditioning = [[positive_cond, {"pooled_output": pooled}]]
+        negative_conditioning = [[negative_cond, {"pooled_output": pooled}]]
 
-            positive_conditionings.append([positive_cond, {"pooled_output": pooled}])
-            negative_conditionings.append([negative_cond, {"pooled_output": pooled}])
-
-        return (positive_conditionings, negative_conditionings)
+        return (positive_conditioning, negative_conditioning)
 
 NODE_CLASS_MAPPINGS = {
     "CLIPSlider": CLIPSliderNode
